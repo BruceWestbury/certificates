@@ -121,37 +121,39 @@ def Occurrence.valid {L : OpenGraph} {G : ClosedGraph} (o : Occurrence L G) : Bo
 /-!
 The complement `G / L` of an occurrence `o : Occurrence L G`.
 
-Dart type: `{ d : G.Dart // d ∉ img }` where `img = Finset.univ.image o.dartMap`.
-This subtype inherits `Fintype` and `DecidableEq` from `G.Dart` automatically.
+`CompDart`   = G-darts NOT in the image of `o.dartMap`.
+`CompVertex` = G-vertices incident to at least one `CompDart`.
 
-Boundary: the G-partners of L's boundary-dart images — the darts "exposed"
-when the pattern is removed.
+Using `CompVertex` (rather than all of `G.Vertex`) ensures that the vertices
+of the removed pattern do not survive as isolated valence-0 vertices.
 
-`partner` of a complement dart `⟨d, _⟩`: compute `G.partner d`; if the result
-lies outside `img` return it as a complement dart, otherwise return `none`
-(meaning `d` is a boundary dart of the complement).
+The `vertex` map sends each complement dart `d` to the subtype witness
+`⟨G.vertex d.1, ⟨d, rfl⟩⟩`; no membership proof is needed because
+`CompVertex` is defined as exactly the set touched by complement darts.
 
-Marked `abbrev` so that `Replacement.iso` can see the concrete dart type.
+Marked `abbrev` so that `Replacement.iso` can see the concrete types.
 -/
 abbrev Occurrence.complement {L : OpenGraph} {G : ClosedGraph}
     (o : Occurrence L G) : OpenGraph :=
   letI := L.dartFintype;   letI := G.dartFintype
   letI := L.dartDecEq;     letI := G.dartDecEq
   letI := G.vertexFintype; letI := G.vertexDecEq
-  let img : Finset G.Dart := Finset.univ.image o.dartMap
-  { Dart          := { d : G.Dart // d ∉ img }
-    Vertex        := G.Vertex
+  let img        : Finset G.Dart := Finset.univ.image o.dartMap
+  let CompDart   := { d : G.Dart // d ∉ img }
+  let CompVertex := { v : G.Vertex // ∃ d : CompDart, G.vertex d.1 = v }
+  { Dart          := CompDart
+    Vertex        := CompVertex
     dartFintype   := inferInstance
-    vertexFintype := G.vertexFintype
+    vertexFintype := inferInstance
     dartDecEq     := inferInstance
-    vertexDecEq   := G.vertexDecEq
+    vertexDecEq   := inferInstance
     boundary      := L.boundary.filterMap fun b =>
                        let gp := G.partner (o.dartMap b)
                        if h : gp ∉ img then some ⟨gp, h⟩ else none
     partner       := fun ⟨d, _⟩ =>
                        let gp := G.partner d
                        if h : gp ∉ img then some ⟨gp, h⟩ else none
-    vertex        := fun ⟨d, _⟩ => G.vertex d }
+    vertex        := fun d => ⟨G.vertex d.1, ⟨d, rfl⟩⟩ }
 
 -- ============================================================
 -- Isomorphism
@@ -187,31 +189,255 @@ def Isomorphism.valid {C1 C2 : OpenGraph} (iso : Isomorphism C1 C2) : Bool :=
 -- ============================================================
 
 /-!
-A replacement certificate bundles two occurrences and an isomorphism between
-their complements.
+A replacement certificate asserts that the complement of occurrence `before`
+(embedding `L` in `G`) is isomorphic to the complement of occurrence `after`
+(embedding `R` in `H`), with matching ordered boundary.
 
-Because `Occurrence.complement` is an `abbrev`, the type of `iso` unfolds to
-`Isomorphism { d : G.Dart // d ∉ img_before } { d : H.Dart // d ∉ img_after }`,
-so the dart maps are correctly restricted to complement darts by the type system.
+The common data `L`, `R`, `G`, and `before` are type parameters rather than
+fields.  This eliminates redundant storage and lets theorem statements share
+these quantities by unification rather than by explicit equality hypotheses
+or `HEq`.
+
+Because `Occurrence.complement` is an `abbrev`, `iso`'s dart map has the
+concrete type
+  `{ d : G.Dart // d ∉ img_before } → { d : H.Dart // d ∉ img_after }`,
+so the type system enforces that maps stay within complement darts.
 -/
-structure Replacement where
-  L      : OpenGraph
-  G      : ClosedGraph
-  R      : OpenGraph
-  H      : ClosedGraph
-  before : Occurrence L G
-  after  : Occurrence R H
-  iso    : Isomorphism before.complement after.complement
+structure Replacement
+    (L R  : OpenGraph)
+    (G H  : ClosedGraph)
+    (before : Occurrence L G) where
+  after : Occurrence R H
+  iso   : Isomorphism before.complement after.complement
 
-/-- A `Replacement` is valid when all components are well-formed and the
-    isomorphism correctly connects the two computed complements. -/
-def Replacement.valid (r : Replacement) : Bool :=
-  r.L.valid
-  && r.G.valid
-  && r.R.valid
-  && r.H.valid
-  && r.before.valid
+/-- A `Replacement` is valid when all components are well-formed, the
+    isomorphism correctly connects the two complements, and the boundary
+    ordering is compatible: applying `iso` to the complement boundary darts
+    of the left occurrence gives exactly the complement boundary darts of
+    the right occurrence, in the same order. -/
+def Replacement.valid
+    {L R  : OpenGraph}
+    {G H  : ClosedGraph}
+    {before : Occurrence L G}
+    (r : Replacement L R G H before) : Bool :=
+  L.valid
+  && G.valid
+  && R.valid
+  && H.valid
+  && before.valid
   && r.after.valid
-  && r.before.complement.valid
+  && before.complement.valid
   && r.after.complement.valid
   && r.iso.valid
+  -- Ordered boundary compatibility:
+  --   before.complement.boundary[i]
+  --     = G-partner of before.dartMap (L.boundary[i])
+  --   applying iso maps it to
+  --     = H-partner of after.dartMap  (R.boundary[i])
+  --     = r.after.complement.boundary[i]
+  -- i.e. iso ∘ (complement boundary of L) = complement boundary of R.
+  && (letI := r.after.complement.dartDecEq
+      decide (before.complement.boundary.map r.iso.dartMap =
+              r.after.complement.boundary))
+
+-- ============================================================
+-- Uniqueness of substitution up to isomorphism
+-- ============================================================
+
+/-- Two closed dart graphs are isomorphic if there exist bijections on darts
+    and vertices that commute with `partner` and `vertex`. -/
+def ClosedGraph.IsIso (G H : ClosedGraph) : Prop :=
+  ∃ (f : G.Dart → H.Dart) (g : G.Vertex → H.Vertex),
+    Function.Bijective f ∧
+    Function.Bijective g ∧
+    (∀ d : G.Dart, H.partner (f d) = f (G.partner d)) ∧
+    (∀ d : G.Dart, H.vertex  (f d) = g (G.vertex  d))
+
+/-!
+### Uniqueness of substitution up to isomorphism
+
+If two valid replacement certificates share the same host `G`, pattern `L`,
+occurrence `before : Occurrence L G`, and replacement `R`, then their result
+graphs `H₁` and `H₂` are isomorphic as closed dart graphs.
+
+With the parameterised structure the shared data is a type parameter, so
+both certificates literally have the same `L`, `R`, `G`, `before`; no
+equality hypotheses or `HEq` are needed.
+
+Proof: omitted (`sorry`).  The argument would construct the isomorphism
+explicitly from the two isomorphisms `r₁.iso` and `r₂.iso`, both of which
+map from the same complement `before.complement`, and then use the ordered
+boundary compatibility to show the two gluings produce isomorphic results.
+-/
+theorem Replacement.unique_up_to_iso
+    {L R   : OpenGraph}
+    {G H₁ H₂ : ClosedGraph}
+    {before : Occurrence L G}
+    (r₁  : Replacement L R G H₁ before)
+    (r₂  : Replacement L R G H₂ before)
+    (hv₁ : r₁.valid = true)
+    (hv₂ : r₂.valid = true) :
+    ClosedGraph.IsIso H₁ H₂ := by
+  sorry
+
+-- ============================================================
+-- Stage 1: Valence helpers
+-- ============================================================
+
+/-- The number of darts incident to vertex `v` in `G`. -/
+def ClosedGraph.valence (G : ClosedGraph) (v : G.Vertex) : Nat :=
+  letI := G.dartFintype
+  letI := G.vertexDecEq
+  (Finset.univ.filter (fun d => G.vertex d = v)).card
+
+/-- True iff vertex `v` has exactly two incident darts. -/
+def ClosedGraph.isBivalent (G : ClosedGraph) (v : G.Vertex) : Bool :=
+  G.valence v == 2
+
+/-- The finset of all bivalent (valence-2) vertices of `G`. -/
+def ClosedGraph.bivalentVertices (G : ClosedGraph) : Finset G.Vertex :=
+  letI := G.vertexFintype
+  Finset.univ.filter (fun v => G.valence v = 2)
+
+/-- True iff `G` has no bivalent vertices, i.e., every vertex has valence 3. -/
+def ClosedGraph.isTrivalent (G : ClosedGraph) : Bool :=
+  G.bivalentVertices.isEmpty
+
+-- ============================================================
+-- Stage 2: SuppressionData
+-- ============================================================
+
+/-!
+A `SuppressionData G` names the bivalent vertex to remove and its two
+incident darts.  The `Prop`-valued fields document the mathematical intent;
+`SuppressionData.valid` is the executable Boolean check.
+-/
+structure SuppressionData (G : ClosedGraph) where
+  /-- The bivalent vertex to suppress. -/
+  vertex    : G.Vertex
+  /-- Its two incident darts. -/
+  d₁ d₂    : G.Dart
+  distinct  : d₁ ≠ d₂
+  incident₁ : G.vertex d₁ = vertex
+  incident₂ : G.vertex d₂ = vertex
+
+/-- Checks that `{d₁, d₂}` is exactly the dart-set of `vertex`.
+    This forces valence = 2 and confirms `d₁`, `d₂` are its only darts. -/
+def SuppressionData.valid {G : ClosedGraph} (s : SuppressionData G) : Bool :=
+  letI := G.dartFintype
+  letI := G.dartDecEq
+  letI := G.vertexDecEq
+  decide (Finset.univ.filter (fun d => G.vertex d = s.vertex) = {s.d₁, s.d₂})
+
+-- ============================================================
+-- Stage 3: Suppression
+-- ============================================================
+
+/-!
+## Bivalent-vertex suppression
+
+`ClosedGraph.suppress s` removes `s.vertex` and its two darts `s.d₁`, `s.d₂`,
+then reconnects the two surviving partner darts
+`e₁ = G.partner s.d₁` and `e₂ = G.partner s.d₂` into a new edge.
+
+Type-level design mirrors `Occurrence.complement`:
+
+- **`NewDart`** = `{ d : G.Dart // d ∉ {s.d₁, s.d₂} }` — inherits `Fintype`
+  and `DecidableEq` automatically.
+
+- **`NewVertex`** = `{ v : G.Vertex // ∃ nd : NewDart, G.vertex nd.1 = v }` —
+  vertices touched by at least one surviving dart, so `s.vertex` is excluded
+  automatically (every dart incident to it is removed).
+
+- **`partner`**: `e₁ ↦ e₂`, `e₂ ↦ e₁`; all other darts keep their old
+  partner.  For valid suppression data, `e₁` and `e₂` are never in `removed`,
+  so the `else ⟨d, hd⟩` fallback is unreachable.
+
+- **`vertex`**: `fun d => ⟨G.vertex d.1, ⟨d, rfl⟩⟩`, identical to the
+  complement construction — no proof obligations.
+-/
+abbrev ClosedGraph.suppress {G : ClosedGraph} (s : SuppressionData G) : ClosedGraph :=
+  letI := G.dartFintype
+  letI := G.dartDecEq
+  letI := G.vertexFintype
+  letI := G.vertexDecEq
+  let removed : Finset G.Dart := {s.d₁, s.d₂}
+  let e₁ : G.Dart := G.partner s.d₁   -- surviving partner of d₁
+  let e₂ : G.Dart := G.partner s.d₂   -- surviving partner of d₂
+  let NewDart   := { d : G.Dart // d ∉ removed }
+  let NewVertex := { v : G.Vertex // ∃ nd : NewDart, G.vertex nd.1 = v }
+  { Dart          := NewDart
+    Vertex        := NewVertex
+    dartFintype   := inferInstance
+    vertexFintype := inferInstance
+    dartDecEq     := inferInstance
+    vertexDecEq   := inferInstance
+    -- reconnect e₁ ↔ e₂; all other surviving darts keep G.partner
+    partner       := fun ⟨d, hd⟩ =>
+                       let gp := if d = e₁ then e₂
+                                 else if d = e₂ then e₁
+                                 else G.partner d
+                       if h : gp ∉ removed then ⟨gp, h⟩ else ⟨d, hd⟩
+    vertex        := fun d => ⟨G.vertex d.1, ⟨d, rfl⟩⟩ }
+
+-- ============================================================
+-- Stage 4: Example — modified theta graph
+-- ============================================================
+
+/-!
+### Modified theta graph
+
+Two trivalent vertices A (= 0) and B (= 1), one bivalent vertex C (= 2).
+
+```
+A ─[0,1]──────── B     (edge 1)
+A ─[2,3]──────── B     (edge 2)
+A ─[4,6]─ C ─[7,5]─ B (path through C)
+```
+
+Partner pairings: 0 ↔ 1, 2 ↔ 3, 4 ↔ 6, 5 ↔ 7.
+
+Suppressing C reconnects dart 4 (at A) to dart 5 (at B),
+recovering the plain theta graph with partner pairings 0↔1, 2↔3, 4↔5.
+-/
+def modifiedTheta : ClosedGraph where
+  Dart          := Fin 8
+  Vertex        := Fin 3
+  dartFintype   := inferInstance
+  vertexFintype := inferInstance
+  dartDecEq     := inferInstance
+  vertexDecEq   := inferInstance
+  partner       := fun d => match d.val with
+                     | 0 => 1 | 1 => 0
+                     | 2 => 3 | 3 => 2
+                     | 4 => 6 | 6 => 4
+                     | 5 => 7 | 7 => 5
+                     | _ => 0  -- unreachable (Fin 8 has values 0–7 only)
+  vertex        := fun d => match d.val with
+                     | 0 | 2 | 4 => 0  -- vertex A
+                     | 1 | 3 | 5 => 1  -- vertex B
+                     | _         => 2  -- vertex C (darts 6, 7)
+
+/-- Suppress vertex C (Fin 3 value 2) via its two incident darts 6 and 7. -/
+def suppressC : SuppressionData modifiedTheta where
+  vertex    := 2
+  d₁        := 6
+  d₂        := 7
+  distinct  := by decide
+  incident₁ := by decide
+  incident₂ := by decide
+
+-- The original graph is valid (contains one bivalent vertex).
+#eval modifiedTheta.valid                                           -- true
+-- C is bivalent, so the graph is not yet trivalent.
+#eval modifiedTheta.isTrivalent                                     -- false
+-- The suppression data correctly identifies C and its two darts.
+#eval suppressC.valid                                               -- true
+-- After suppression the result is a valid closed graph.
+#eval (modifiedTheta.suppress suppressC).valid                      -- true
+-- Every vertex in the suppressed graph is trivalent.
+#eval (modifiedTheta.suppress suppressC).isTrivalent                -- true
+-- Dart count decreases by 2 (8 - 2 = 6).
+#eval Fintype.card (modifiedTheta.suppress suppressC).Dart          -- 6
+-- Vertex count decreases by 1 (3 - 1 = 2).
+#eval Fintype.card (modifiedTheta.suppress suppressC).Vertex        -- 2
