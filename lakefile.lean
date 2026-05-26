@@ -10,4 +10,4 @@ require mathlib from git
   "https://github.com/leanprover-community/mathlib4.git"
 
 lean_lib «Certificates» where
-  roots := #[`Main, `Graphs]
+  roots := #[`Main, `Graphs, `Reductions]
