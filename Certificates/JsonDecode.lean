@@ -10,13 +10,24 @@ open Lean
 structure Occurrence where
   dartMap : Array (Nat × Nat)
 
-/-- A single reduction step decoded from the certificate.
-    The `after` field is kept as raw `Json` for now. -/
+/-- One term in a linear combination.
+    All three payload fields are kept as raw `Json` so this file
+    stays independent of the graph and coefficient representations. -/
+structure LCTerm where
+  coefficient : Json
+  graph       : Json
+  metadata    : Json
+
+/-- A linear combination: a finite array of `Term`s. -/
+structure LinearCombination where
+  terms : Array LCTerm
+
+/-- A single reduction step decoded from the certificate. -/
 structure Step where
   termIndex  : Nat
   rule       : String
   occurrence : Occurrence
-  after      : Json
+  after      : LinearCombination   -- was Json
 
 /-- The top-level source-reduction certificate. -/
 structure Certificate where
@@ -87,13 +98,28 @@ def decodeOccurrence (j : Json) : Except String Occurrence := do
   let dartMap  ← rawPairs.mapM decodePair
   return { dartMap }
 
-/-- Decode a `Step` from a JSON object.
-    `after` is left as raw `Json` for now. -/
+/-- Decode one `Term` from a JSON object with `coefficient`, `graph`,
+    and `metadata` fields.  All three values are stored as raw `Json`. -/
+def decodeLCTerm (j : Json) : Except String LCTerm := do
+  let coefficient ← getObjVal j "coefficient"
+  let graph       ← getObjVal j "graph"
+  let metadata    ← getObjVal j "metadata"
+  return { coefficient, graph, metadata }
+
+/-- Decode a `LinearCombination` from `{ "terms": [ ... ] }`.
+    `Array.mapM decodeLCTerm` sequences the per-element decoder,
+    short-circuiting on the first error. -/
+def decodeLinearCombination (j : Json) : Except String LinearCombination := do
+  let rawTerms ← asArray (← getObjVal j "terms")
+  let terms    ← rawTerms.mapM decodeLCTerm
+  return { terms }
+
+/-- Decode a `Step` from a JSON object. -/
 def decodeStep (j : Json) : Except String Step := do
-  let termIndex ← asNat (← getObjVal j "term_index")
+  let termIndex  ← asNat    (← getObjVal j "term_index")
   let rule       ← asString (← getObjVal j "rule")
   let occurrence ← decodeOccurrence (← getObjVal j "occurrence")
-  let after      ← getObjVal j "after"
+  let after      ← decodeLinearCombination (← getObjVal j "after")
   return { termIndex, rule, occurrence, after }
 
 /-- Decode the top-level certificate.
@@ -124,6 +150,7 @@ def readCertificate (path : System.FilePath) : IO Unit := do
       | some step =>
           IO.println s!"first term index: {step.termIndex}"
           IO.println s!"first rule: {step.rule}"
+          IO.println s!"first after terms: {step.after.terms.size}"
       | none =>
           IO.println "(no steps)"
   | Except.error e =>
