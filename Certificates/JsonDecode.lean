@@ -10,11 +10,15 @@ open Lean
 structure Occurrence where
   dartMap : Array (Nat × Nat)
 
+/-- A polynomial coefficient stored as an array of string-encoded values.
+    Strings are left unparsed; no arithmetic is performed here. -/
+structure Coefficient where
+  coefficients : Array String
+
 /-- One term in a linear combination.
-    All three payload fields are kept as raw `Json` so this file
-    stays independent of the graph and coefficient representations. -/
+    `coefficient` is now typed; `graph` and `metadata` remain raw `Json`. -/
 structure LCTerm where
-  coefficient : Json
+  coefficient : Coefficient   -- was Json
   graph       : Json
   metadata    : Json
 
@@ -70,8 +74,7 @@ def asArray (j : Json) : Except String (Array Json) :=
 -- New helper
 -- ============================================================
 
-/-- Safe positional element access with a readable error.
-    `Array.get? i` returns `Option Json`; we convert to `Except`. -/
+/-- Safe array access returning `Option Json`, converted to `Except`. -/
 def getElem (arr : Array Json) (i : Nat) : Except String Json :=
   match arr[i]? with
   | some v => .ok v
@@ -98,10 +101,19 @@ def decodeOccurrence (j : Json) : Except String Occurrence := do
   let dartMap  ← rawPairs.mapM decodePair
   return { dartMap }
 
-/-- Decode one `Term` from a JSON object with `coefficient`, `graph`,
-    and `metadata` fields.  All three values are stored as raw `Json`. -/
+/-- Decode a `Coefficient` from `{ "coefficients": ["-4", "2", ...] }`.
+
+    `asArray` unwraps the JSON array; `Array.mapM asString` then decodes
+    each element, short-circuiting on the first non-string value. -/
+def decodeCoefficient (j : Json) : Except String Coefficient := do
+  let rawArr       ← asArray (← getObjVal j "coefficients")
+  let coefficients ← rawArr.mapM asString
+  return { coefficients }
+
+/-- Decode one `LCTerm`.  `coefficient` is now decoded via `decodeCoefficient`;
+    `graph` and `metadata` are still stored as raw `Json`. -/
 def decodeLCTerm (j : Json) : Except String LCTerm := do
-  let coefficient ← getObjVal j "coefficient"
+  let coefficient ← decodeCoefficient (← getObjVal j "coefficient")
   let graph       ← getObjVal j "graph"
   let metadata    ← getObjVal j "metadata"
   return { coefficient, graph, metadata }
@@ -145,12 +157,18 @@ def readCertificate (path : System.FilePath) : IO Unit := do
       IO.println s!"format: {cert.format}"
       IO.println s!"version: {cert.version}"
       IO.println s!"steps: {cert.steps.size}"
-      -- Print first step using Array.get? which returns Option Step.
+      -- Print first step using safe array access `steps[0]?`.
       match cert.steps[0]? with
       | some step =>
           IO.println s!"first term index: {step.termIndex}"
           IO.println s!"first rule: {step.rule}"
           IO.println s!"first after terms: {step.after.terms.size}"
+          match step.after.terms[0]? with
+          | some term =>
+              let cs  := term.coefficient.coefficients.toList
+              IO.println s!"first after first coefficient: {String.intercalate ", " cs}"
+          | none =>
+              IO.println "(first after has no terms)"
       | none =>
           IO.println "(no steps)"
   | Except.error e =>
