@@ -15,12 +15,18 @@ structure Occurrence where
 structure Coefficient where
   coefficients : Array String
 
+/-- Metadata for one term in a linear combination.
+    Currently holds a single canonical key string; kept minimal
+    so the structure can grow without changing callers. -/
+structure Metadata where
+  key : String
+
 /-- One term in a linear combination.
-    `coefficient` is now typed; `graph` and `metadata` remain raw `Json`. -/
+    `coefficient` and `metadata` are now typed; `graph` remains raw `Json`. -/
 structure LCTerm where
   coefficient : Coefficient   -- was Json
   graph       : Json
-  metadata    : Json
+  metadata    : Metadata      -- was Json
 
 /-- A linear combination: a finite array of `Term`s. -/
 structure LinearCombination where
@@ -110,12 +116,19 @@ def decodeCoefficient (j : Json) : Except String Coefficient := do
   let coefficients ← rawArr.mapM asString
   return { coefficients }
 
-/-- Decode one `LCTerm`.  `coefficient` is now decoded via `decodeCoefficient`;
-    `graph` and `metadata` are still stored as raw `Json`. -/
+/-- Decode a `Metadata` from `{ "key": "..." }`.
+    One `getObjVal` call to fetch the field, then `asString` to
+    unwrap the JSON string value. -/
+def decodeMetadata (j : Json) : Except String Metadata := do
+  let key ← asString (← getObjVal j "key")
+  return { key }
+
+/-- Decode one `LCTerm`.  `coefficient` is decoded via `decodeCoefficient`,
+    `metadata` via `decodeMetadata`; `graph` remains raw `Json`. -/
 def decodeLCTerm (j : Json) : Except String LCTerm := do
   let coefficient ← decodeCoefficient (← getObjVal j "coefficient")
   let graph       ← getObjVal j "graph"
-  let metadata    ← getObjVal j "metadata"
+  let metadata    ← decodeMetadata (← getObjVal j "metadata")
   return { coefficient, graph, metadata }
 
 /-- Decode a `LinearCombination` from `{ "terms": [ ... ] }`.
@@ -167,6 +180,7 @@ def readCertificate (path : System.FilePath) : IO Unit := do
           | some term =>
               let cs  := term.coefficient.coefficients.toList
               IO.println s!"first after first coefficient: {String.intercalate ", " cs}"
+              IO.println s!"first after first metadata key: {term.metadata.key}"
           | none =>
               IO.println "(first after has no terms)"
       | none =>
