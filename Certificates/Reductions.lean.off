@@ -1,3 +1,5 @@
+import Certificates.Graphs
+
 /-!
 # Certified reductions of trivalent graph linear combinations
 
@@ -9,11 +11,9 @@ steps in linear combinations of trivalent graphs.
 * Linear combinations use `Finsupp` directly.
 * The layer is purely declarative — no rewriting, no search automation.
 
-`Main` is imported transitively, bringing in `Mathlib` together with
+`Graphs` is imported transitively, bringing in `Mathlib` together with
 `ClosedGraph`, `OpenGraph`, `Occurrence`, and the parameterised `Replacement`.
 -/
-
-import Main
 
 -- ============================================================
 -- Linear combinations
