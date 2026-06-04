@@ -69,3 +69,12 @@ private def check (label : String) (result : Except String Unit) : IO Unit :=
     partner  := #[10, 11]  -- both darts are fixed points
   }
 -- Expected: [error] 5. fixed point — partner has a fixed point at dart 10
+
+#eval check "6. validates" <|
+  RawClosedGraph.validate {
+    darts    := #[10, 11]
+    vertices := #[100]
+    vertexOf := #[100, 100]
+    partner  := #[11, 10]
+  }
+-- Expected: [error] 6. validates
