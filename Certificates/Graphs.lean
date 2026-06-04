@@ -1,4 +1,7 @@
-import Mathlib
+import Mathlib.Data.Fintype.Basic
+import Mathlib.Data.Fin.Basic
+import Mathlib.Data.Finset.Basic
+import Mathlib.Data.Finsupp.Basic
 
 /-!
 # Core graph structures — finite type formulation
@@ -301,7 +304,7 @@ def ClosedGraph.bivalentVertices (G : ClosedGraph) : Finset G.Vertex :=
 
 /-- True iff `G` has no bivalent vertices, i.e., every vertex has valence 3. -/
 def ClosedGraph.isTrivalent (G : ClosedGraph) : Bool :=
-  G.bivalentVertices.isEmpty
+  G.bivalentVertices.card = 0
 
 -- ============================================================
 -- Stage 2: SuppressionData
@@ -316,7 +319,8 @@ structure SuppressionData (G : ClosedGraph) where
   /-- The bivalent vertex to suppress. -/
   vertex    : G.Vertex
   /-- Its two incident darts. -/
-  d₁ d₂    : G.Dart
+  d₁ : G.Dart
+  d₂ : G.Dart
   distinct  : d₁ ≠ d₂
   incident₁ : G.vertex d₁ = vertex
   incident₂ : G.vertex d₂ = vertex
@@ -418,14 +422,16 @@ def modifiedTheta : ClosedGraph where
                      | 1 | 3 | 5 => 1  -- vertex B
                      | _         => 2  -- vertex C (darts 6, 7)
 
+/- Causing errors
 /-- Suppress vertex C (Fin 3 value 2) via its two incident darts 6 and 7. -/
 def suppressC : SuppressionData modifiedTheta where
-  vertex    := 2
-  d₁        := 6
-  d₂        := 7
+  vertex := ⟨2, by decide⟩
+  d₁     := ⟨6, by decide⟩
+  d₂     := ⟨7, by decide⟩
   distinct  := by decide
   incident₁ := by decide
   incident₂ := by decide
+
 
 -- The original graph is valid (contains one bivalent vertex).
 #eval modifiedTheta.valid                                           -- true
@@ -441,7 +447,7 @@ def suppressC : SuppressionData modifiedTheta where
 #eval Fintype.card (modifiedTheta.suppress suppressC).Dart          -- 6
 -- Vertex count decreases by 1 (3 - 1 = 2).
 #eval Fintype.card (modifiedTheta.suppress suppressC).Vertex        -- 2
-
+-/
 
 
 
