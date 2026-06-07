@@ -404,7 +404,7 @@ Partner pairings: 0 ↔ 1, 2 ↔ 3, 4 ↔ 6, 5 ↔ 7.
 Suppressing C reconnects dart 4 (at A) to dart 5 (at B),
 recovering the plain theta graph with partner pairings 0↔1, 2↔3, 4↔5.
 -/
-def modifiedTheta : ClosedGraph where
+abbrev modifiedTheta : ClosedGraph where
   Dart          := Fin 8
   Vertex        := Fin 3
   dartFintype   := inferInstance
@@ -422,16 +422,16 @@ def modifiedTheta : ClosedGraph where
                      | 1 | 3 | 5 => 1  -- vertex B
                      | _         => 2  -- vertex C (darts 6, 7)
 
-/- Causing errors
-/-- Suppress vertex C (Fin 3 value 2) via its two incident darts 6 and 7. -/
+/-- Suppress vertex C (Fin 3 value 2) via its two incident darts 6 and 7.
+    With `abbrev modifiedTheta`, the field types reduce to `Fin 8` / `Fin 3`,
+    so `by decide` can evaluate all proof obligations concretely. -/
 def suppressC : SuppressionData modifiedTheta where
-  vertex := ⟨2, by decide⟩
-  d₁     := ⟨6, by decide⟩
-  d₂     := ⟨7, by decide⟩
-  distinct  := by decide
-  incident₁ := by decide
-  incident₂ := by decide
-
+  vertex    := ⟨2, by decide⟩   -- vertex C : Fin 3
+  d₁        := ⟨6, by decide⟩   -- dart 6  : Fin 8
+  d₂        := ⟨7, by decide⟩   -- dart 7  : Fin 8
+  distinct  := by decide           -- 6 ≠ 7 as Fin 8
+  incident₁ := by decide           -- modifiedTheta.vertex 6 = 2
+  incident₂ := by decide           -- modifiedTheta.vertex 7 = 2
 
 -- The original graph is valid (contains one bivalent vertex).
 #eval modifiedTheta.valid                                           -- true
@@ -443,11 +443,10 @@ def suppressC : SuppressionData modifiedTheta where
 #eval (modifiedTheta.suppress suppressC).valid                      -- true
 -- Every vertex in the suppressed graph is trivalent.
 #eval (modifiedTheta.suppress suppressC).isTrivalent                -- true
--- Dart count decreases by 2 (8 - 2 = 6).
+-- Dart count decreases by 2 (8 − 2 = 6).
 #eval Fintype.card (modifiedTheta.suppress suppressC).Dart          -- 6
--- Vertex count decreases by 1 (3 - 1 = 2).
+-- Vertex count decreases by 1 (3 − 1 = 2).
 #eval Fintype.card (modifiedTheta.suppress suppressC).Vertex        -- 2
--/
 
 
 
