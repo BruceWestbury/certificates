@@ -1,8 +1,10 @@
--- import Certificates.JsonDecode   -- temporarily disabled: old direct decoder needs rework
+import Certificates.JsonDecode
+import Certificates.JsonDecodeTests
 import Certificates.Graphs
 import Certificates.RawClosedGraph
 import Certificates.RawClosedGraphTests
 import Certificates.ValidatedClosedGraph
+import Certificates.TypedClosedGraph
 
 def main : IO Unit := do
-  pure ()   -- placeholder: readCertificate will be restored once the new pipeline is wired up
+  readCertificate "../cubic-jordan/projects/f4/certificates/t10/sources_0000.json"

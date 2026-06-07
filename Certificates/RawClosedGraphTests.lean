@@ -1,4 +1,5 @@
 import Certificates.RawClosedGraph
+import Certificates.ValidatedClosedGraph
 
 /-!
 # Tests for `RawClosedGraph.validate`
@@ -77,4 +78,20 @@ private def check (label : String) (result : Except String Unit) : IO Unit :=
     vertexOf := #[100, 100]
     partner  := #[11, 10]
   }
--- Expected: [error] 6. validates
+-- Expected: [ok] 6. validates
+
+private def checkValidated (name : String) (r : Except String ValidatedClosedGraph) : IO Unit := do
+  match r with
+  | Except.ok v =>
+      IO.println s!"[ok]    {name} — partnerIdx = {v.partnerIdx}, vertexIdx = {v.vertexIdx}"
+  | Except.error e =>
+      IO.println s!"[error] {name} — {e}"
+
+#eval checkValidated "7. toValidated index translation" <|
+  RawClosedGraph.toValidated {
+    darts    := #[10, 11]
+    vertices := #[100]
+    vertexOf := #[100, 100]
+    partner  := #[11, 10]
+  }
+-- Expected: [ok] 7. toValidated index translation — partnerIdx = #[1, 0], vertexIdx = #[0, 0]
