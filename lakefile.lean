@@ -10,3 +10,9 @@ lean_lib «Certificates» where
 
 lean_exe «certificates» where
   root := `Main
+
+lean_exe «polynomial_tests» where
+  root := `Certificates.PolynomialTests
+
+lean_exe cert_check where
+  root := `Certificates.CertCheck

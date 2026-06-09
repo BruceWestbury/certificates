@@ -1,4 +1,5 @@
 import Certificates.JsonDecode
+import Certificates.LCChecker
 
 open Lean
 
@@ -411,3 +412,25 @@ def smokeTestCertificate (label : String) (path : System.FilePath) : IO Unit := 
 
 #eval smokeTestCertificate "E6"
         "../cubic-jordan/projects/e6/certificates/t14/sources_0000.json"
+
+-- ════════════════════════════════════════════════════════
+-- LC-checker smoke tests
+-- ════════════════════════════════════════════════════════
+
+private def lcCheck (label : String) (path : System.FilePath) : IO Unit := do
+  IO.println s!"=== {label}: LC check ==="
+  let text ← IO.FS.readFile path
+  match Json.parse text >>= decodeCertificate with
+  | .error e =>
+    IO.println s!"  [FAIL] decode: {e}"
+  | .ok cert =>
+    IO.println s!"  steps to check: {cert.steps.size}"
+    match checkAllSteps cert with
+    | .error e =>
+      IO.println s!"  [FAIL] LC arithmetic: {e}"
+    | .ok _ ->
+      IO.println s!"  [pass] all {cert.steps.size} LC steps valid"
+  IO.println s!"=== {label}: LC done ==="
+
+#eval lcCheck "F4" "../cubic-jordan/projects/f4/certificates/t10/sources_0000.json"
+#eval lcCheck "E6" "../cubic-jordan/projects/e6/certificates/t14/sources_0000.json"

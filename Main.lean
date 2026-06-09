@@ -1,5 +1,6 @@
 import Certificates.JsonDecode
 import Certificates.JsonDecodeTests
+import Certificates.LCChecker
 import Certificates.Graphs
 import Certificates.RawClosedGraph
 import Certificates.RawClosedGraphTests

@@ -159,6 +159,109 @@ abbrev Occurrence.complement {L : OpenGraph} {G : ClosedGraph}
     vertex        := fun d => ⟨G.vertex d.1, ⟨d, rfl⟩⟩ }
 
 -- ============================================================
+-- After-occurrence extensions (bivalent-vertex overlap)
+-- ============================================================
+
+/-!
+In the new certificate design, a bivalent vertex of the RHS graph R may have
+both its incident darts on the boundary of R.  When embedded via the
+after-occurrence, those two image darts are partners in H and are allowed to
+lie in both the occurrence image and the complement boundary simultaneously.
+
+Three additions support this:
+1. `OpenGraph.bivalentBoundaryDarts` — identifies the eligible boundary darts.
+2. `Occurrence.validAfter`           — relaxed validity for after-occurrences.
+3. `Occurrence.afterComplement`      — extended complement including overlap darts.
+-/
+
+/-- The boundary darts of `R` whose vertex has exactly two incident darts,
+    both of which are boundary darts.  These are the darts eligible for the
+    overlap between occurrence image and complement. -/
+def OpenGraph.bivalentBoundaryDarts (R : OpenGraph) : Finset R.Dart :=
+  letI := R.dartFintype; letI := R.dartDecEq; letI := R.vertexDecEq
+  R.boundary.toFinset.filter fun d =>
+    let vDarts := Finset.univ.filter (fun e => R.vertex e = R.vertex d)
+    vDarts.card = 2 ∧ vDarts ⊆ R.boundary.toFinset
+
+/-- Relaxed validity for after-occurrences.
+
+    Conditions (1)–(4) are identical to `Occurrence.valid`.
+    Condition (5) is split into two cases:
+
+    (5a) Ordinary boundary darts (`b ∉ bivalentBoundaryDarts`): the
+         H-partner of the image lies outside the image, as before.
+
+    (5b) Bivalent boundary darts (`b ∈ bivalentBoundaryDarts`): the two
+         image darts for the bivalent vertex are H-partners of each other.
+         Both will appear on the after-complement boundary. -/
+def Occurrence.validAfter {R : OpenGraph} {H : ClosedGraph} (o : Occurrence R H) : Bool :=
+  letI := R.dartFintype;   letI := H.dartFintype
+  letI := R.vertexFintype; letI := H.vertexFintype
+  letI := R.dartDecEq;     letI := H.dartDecEq
+  letI := R.vertexDecEq;   letI := H.vertexDecEq
+  -- (1) dartMap is injective
+  decide (Function.Injective o.dartMap)
+  -- (2) vertexMap is injective
+  && decide (Function.Injective o.vertexMap)
+  -- (3) preserves incidence
+  && decide (∀ d : R.Dart, H.vertex (o.dartMap d) = o.vertexMap (R.vertex d))
+  -- (4) preserves interior pairings
+  && decide (∀ d e : R.Dart, R.partner d = some e → H.partner (o.dartMap d) = o.dartMap e)
+  -- (5a) ordinary boundary darts: H-partner of image is outside the image
+  && decide (∀ b : R.Dart, b ∈ R.boundary → b ∉ R.bivalentBoundaryDarts →
+       H.partner (o.dartMap b) ∉ Finset.univ.image o.dartMap)
+  -- (5b) bivalent boundary darts: the two image darts are H-partners
+  && decide (∀ b : R.Dart, b ∈ R.bivalentBoundaryDarts →
+       ∃ e : R.Dart, e ∈ R.bivalentBoundaryDarts
+         ∧ R.vertex e = R.vertex b ∧ e ≠ b
+         ∧ H.partner (o.dartMap b) = o.dartMap e)
+
+/-- Extended complement for an after-occurrence.
+
+    The dart set includes:
+    - all H-darts outside the occurrence image (regular complement darts), and
+    - images of bivalent boundary darts (overlap darts, in both image and complement).
+
+    The boundary is constructed by a **single pass through `R.boundary`** to
+    preserve the RHS boundary order (required for the iso boundary check):
+    - ordinary boundary dart b: contribute H.partner (o.dartMap b) as before;
+    - bivalent boundary dart b: contribute o.dartMap b itself. -/
+abbrev Occurrence.afterComplement {R : OpenGraph} {H : ClosedGraph}
+    (o : Occurrence R H) : OpenGraph :=
+  letI := R.dartFintype;   letI := H.dartFintype
+  letI := R.dartDecEq;     letI := H.dartDecEq
+  letI := R.vertexDecEq                           -- needed by bivalentBoundaryDarts
+  letI := H.vertexFintype; letI := H.vertexDecEq
+  let img     : Finset H.Dart := Finset.univ.image o.dartMap
+  let overlap : Finset H.Dart := R.bivalentBoundaryDarts.image o.dartMap
+  let ACompDart   := { d : H.Dart // d ∉ img ∨ d ∈ overlap }
+  let ACompVertex := { v : H.Vertex // ∃ d : ACompDart, H.vertex d.1 = v }
+  { Dart          := ACompDart
+    Vertex        := ACompVertex
+    dartFintype   := inferInstance
+    vertexFintype := inferInstance
+    dartDecEq     := inferInstance
+    vertexDecEq   := inferInstance
+    -- Single pass preserves RHS boundary order exactly.
+    boundary      := R.boundary.filterMap (fun b =>
+                       if b ∈ R.bivalentBoundaryDarts then
+                         -- Bivalent case: contribute the image dart itself.
+                         let d := o.dartMap b
+                         if h : d ∉ img ∨ d ∈ overlap then some (⟨d, h⟩ : ACompDart)
+                         else none
+                       else
+                         -- Ordinary case: contribute H.partner of the image,
+                         -- exactly as in Occurrence.complement.
+                         let gp := H.partner (o.dartMap b)
+                         if h : gp ∉ img ∨ gp ∈ overlap then some (⟨gp, h⟩ : ACompDart)
+                         else none)
+    partner       := fun ⟨d, _⟩ =>
+                       let gp := H.partner d
+                       if h : gp ∉ img ∨ gp ∈ overlap then some (⟨gp, h⟩ : ACompDart)
+                       else none
+    vertex        := fun d => ⟨H.vertex d.1, ⟨d, rfl⟩⟩ }
+
+-- ============================================================
 -- Isomorphism
 -- ============================================================
 
@@ -201,17 +304,21 @@ fields.  This eliminates redundant storage and lets theorem statements share
 these quantities by unification rather than by explicit equality hypotheses
 or `HEq`.
 
-Because `Occurrence.complement` is an `abbrev`, `iso`'s dart map has the
-concrete type
-  `{ d : G.Dart // d ∉ img_before } → { d : H.Dart // d ∉ img_after }`,
+Because `Occurrence.complement` and `Occurrence.afterComplement` are `abbrev`s,
+the `iso` field's dart map has the concrete subtype
+  `{ d : G.Dart // d ∉ img_before } → { d : H.Dart // d ∉ img_after ∨ d ∈ overlap }`,
 so the type system enforces that maps stay within complement darts.
+
+The `before` complement is the strict complement (no overlap allowed).
+The `after` complement is the extended complement that admits the overlap
+with bivalent-boundary dart images.
 -/
 structure Replacement
     (L R  : OpenGraph)
     (G H  : ClosedGraph)
     (before : Occurrence L G) where
   after : Occurrence R H
-  iso   : Isomorphism before.complement after.complement
+  iso   : Isomorphism before.complement after.afterComplement
 
 /-- A `Replacement` is valid when all components are well-formed, the
     isomorphism correctly connects the two complements, and the boundary
@@ -227,21 +334,20 @@ def Replacement.valid
   && G.valid
   && R.valid
   && H.valid
-  && before.valid
-  && r.after.valid
+  && before.valid             -- before occurrence: strict validity
+  && r.after.validAfter       -- after occurrence: relaxed validity (bivalent exception)
   && before.complement.valid
-  && r.after.complement.valid
+  && r.after.afterComplement.valid   -- after complement: extended dart set
   && r.iso.valid
   -- Ordered boundary compatibility:
   --   before.complement.boundary[i]
   --     = G-partner of before.dartMap (L.boundary[i])
-  --   applying iso maps it to
-  --     = H-partner of after.dartMap  (R.boundary[i])
-  --     = r.after.complement.boundary[i]
-  -- i.e. iso ∘ (complement boundary of L) = complement boundary of R.
-  && (letI := r.after.complement.dartDecEq
+  --   applying iso maps it to r.after.afterComplement.boundary[i], which is:
+  --     ordinary dart  → H-partner of after.dartMap (R.boundary[i])
+  --     bivalent dart  → after.dartMap (R.boundary[i]) itself
+  && (letI := r.after.afterComplement.dartDecEq
       decide (before.complement.boundary.map r.iso.dartMap =
-              r.after.complement.boundary))
+              r.after.afterComplement.boundary))
 
 -- ============================================================
 -- Uniqueness of substitution up to isomorphism
