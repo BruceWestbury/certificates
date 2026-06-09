@@ -145,7 +145,8 @@ def decodeNatMap (j : Json) : Except String (Array (Nat × Nat)) := do
     arrays already in the `RawClosedGraph` layout, so we just construct the
     explicit label ranges and pass the arrays through. -/
 def decodeClosedDartGraph (j : Json) : Except String RawClosedGraph := do
-  let fmt ← asString (← getObjVal j "format")
+  let fmt ← asString (← getObjVal j "format"
+    |>.mapError (fun e => s!"decodeClosedDartGraph: {e}\nJSON: {j.compress}"))
   if fmt ≠ "closed_dart_graph" then
     throw s!"expected closed_dart_graph, got '{fmt}'"
   let numDarts    ← asNat (← getObjVal j "num_darts")
@@ -164,7 +165,8 @@ def decodeClosedDartGraph (j : Json) : Except String RawClosedGraph := do
     producing (dart-label, target-label) pairs.  No renumbering, no
     consecutive-numbering assumption, no validation. -/
 def decodeRawDartGraph (j : Json) : Except String RawDartGraph := do
-  let fmt ← asString (← getObjVal j "format")
+  let fmt ← asString (← getObjVal j "format"
+    |>.mapError (fun e => s!"decodeRawDartGraph: {e}\nJSON: {j.compress}"))
   if fmt ≠ "raw_dart_graph" then
     throw s!"expected raw_dart_graph, got '{fmt}'"
   let darts    ← (← asArray (← getObjVal j "darts")).mapM asNat
@@ -233,7 +235,8 @@ def decodeStep (j : Json) : Except String Step := do
 /-- Decode the top-level V2 certificate.
     V2: `initial` is a LinearCombination; `source_key` is present; no `final`. -/
 def decodeCertificate (j : Json) : Except String Certificate := do
-  let format    ← asString (← getObjVal j "format")
+  let format ← asString (← getObjVal j "format"
+    |>.mapError (fun e => s!"decodeCertificate: {e}\nJSON: {j.compress}"))
   let version   ← asNat    (← getObjVal j "version")
   let sourceKey ← asString (← getObjVal j "source_key")
   let initial   ← decodeLinearCombination (← getObjVal j "initial")

@@ -1,11 +1,14 @@
+import Lean.Data.Json.Parser
 import Certificates.JsonDecode
 import Certificates.StepChecker
+
+open Lean
 
 def main (args : List String) : IO UInt32 := do
   match args with
   | [path] =>
       let text ← IO.FS.readFile path
-      match decodeCertificate text with
+      match Json.parse text >>= decodeCertificate with
       | Except.error e =>
           IO.eprintln s!"decode failed: {e}"
           return 1
