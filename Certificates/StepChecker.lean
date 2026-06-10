@@ -56,10 +56,6 @@ private def parseCoeff (c : Coefficient) : Except String Poly := do
 
 -- ─── Graph equality ──────────────────────────────────────────────
 
-/-- Element-wise equality of two `Array Nat` values.
-    Avoids `BEq (Array Nat)` (which goes through the typeclass and can
-    silently pick a structural-equality instance rather than the intended
-    element-by-element one).  Uses `Nat.decEq` directly. -/
 /--
 Elementwise equality for arrays of natural numbers.
 

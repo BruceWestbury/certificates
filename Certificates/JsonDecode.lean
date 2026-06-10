@@ -65,14 +65,31 @@ structure Step where
   replacementCertificates : Array ReplacementCertificate
   after                   : LinearCombination
 
+/-- One entry in the evaluation certificate: the evaluation polynomial assigned
+    to the corresponding term in the final linear combination.
+
+    The final LC already records the graph and its coefficient; the evaluation
+    certificate adds only what is new.  Entries are aligned positionally with
+    `LinearCombination.terms` — no graph or coefficient is repeated here. -/
+structure EvaluationEntry where
+  evaluation : Coefficient   -- the graph's evaluation as a dense poly in n
+
+/-- Evaluation certificate: one `evaluation` entry per term in the final LC,
+    in the same positional order.  Lean checks that
+    Σᵢ final.terms[i].coefficient × entries[i].evaluation  =  0. -/
+structure EvaluationCertificate where
+  entries : Array EvaluationEntry
+
 /-- The top-level source-reduction certificate.
-    V2: no `final` field; `initial` is a LinearCombination; adds `sourceKey`. -/
+    V2: no `final` field; `initial` is a LinearCombination; adds `sourceKey`.
+    An optional `evaluation_certificate` field carries the evaluation data. -/
 structure Certificate where
-  format    : String
-  version   : Nat
-  sourceKey : String           -- new in V2
-  initial   : LinearCombination
-  steps     : Array Step
+  format                : String
+  version               : Nat
+  sourceKey             : String
+  initial               : LinearCombination
+  steps                 : Array Step
+  evaluationCertificate : Option EvaluationCertificate
 
 -- ============================================================
 -- JSON helpers (unchanged)
@@ -232,8 +249,20 @@ def decodeStep (j : Json) : Except String Step := do
   let after                   ← decodeLinearCombination (← getObjVal j "after")
   return { termIndex, rule, occurrence, replacementCertificates, after }
 
+/-- Decode one evaluation entry from `{ "evaluation": { "coefficients": [...] } }`. -/
+def decodeEvaluationEntry (j : Json) : Except String EvaluationEntry := do
+  let evaluation ← decodeCoefficient (← getObjVal j "evaluation")
+  return { evaluation }
+
+/-- Decode an evaluation certificate from `{ "entries": [ ... ] }`. -/
+def decodeEvaluationCertificate (j : Json) : Except String EvaluationCertificate := do
+  let rawEntries ← asArray (← getObjVal j "entries")
+  let entries    ← rawEntries.mapM decodeEvaluationEntry
+  return { entries }
+
 /-- Decode the top-level V2 certificate.
-    V2: `initial` is a LinearCombination; `source_key` is present; no `final`. -/
+    V2: `initial` is a LinearCombination; `source_key` is present; no `final`.
+    An optional `"evaluation_certificate"` field is decoded if present. -/
 def decodeCertificate (j : Json) : Except String Certificate := do
   let format ← asString (← getObjVal j "format"
     |>.mapError (fun e => s!"decodeCertificate: {e}\nJSON: {j.compress}"))
@@ -242,7 +271,14 @@ def decodeCertificate (j : Json) : Except String Certificate := do
   let initial   ← decodeLinearCombination (← getObjVal j "initial")
   let rawSteps  ← asArray  (← getObjVal j "steps")
   let steps     ← rawSteps.mapM decodeStep
-  return { format, version, sourceKey, initial, steps }
+  -- Evaluation certificate is optional; present only after evaluation data is added.
+  let evaluationCertificate : Option EvaluationCertificate ←
+    match j.getObjVal? "evaluation_certificate" with
+    | .ok evalJ  => do
+        let ec ← decodeEvaluationCertificate evalJ
+        pure (some ec)
+    | .error _   => pure none
+  return { format, version, sourceKey, initial, steps, evaluationCertificate }
 
 -- ============================================================
 -- Entry point

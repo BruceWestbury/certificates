@@ -362,24 +362,47 @@ def ClosedGraph.IsIso (G H : ClosedGraph) : Prop :=
     (∀ d : G.Dart, H.partner (f d) = f (G.partner d)) ∧
     (∀ d : G.Dart, H.vertex  (f d) = g (G.vertex  d))
 
-/-!
-### Uniqueness of substitution up to isomorphism
+/--
+Uniqueness of substitution up to isomorphism.
 
-If two valid replacement certificates share the same host `G`, pattern `L`,
-occurrence `before : Occurrence L G`, and replacement `R`, then their result
-graphs `H₁` and `H₂` are isomorphic as closed dart graphs.
+Suppose two valid substitution certificates share the same host graph `G`,
+pattern `L`, replacement `R`, and occurrence
 
-With the parameterised structure the shared data is a type parameter, so
-both certificates literally have the same `L`, `R`, `G`, `before`; no
-equality hypotheses or `HEq` are needed.
+    before : Occurrence L G.
 
-Proof: omitted (`sorry`).  The argument would construct the isomorphism
-explicitly from the two isomorphisms `r₁.iso` and `r₂.iso`, both of which
-map from the same complement `before.complement`, and then use the ordered
-boundary compatibility to show the two gluings produce isomorphic results.
+Each certificate records:
+
+* a substitution of the occurrence,
+* suppression of bivalent vertices created by the replacement,
+* a relabelling of the resulting graph.
+
+The substitution operation itself is not deterministic at the level of raw
+dart labels: different certificates may choose different labels for newly
+created darts and vertices, suppress bivalent vertices in a different
+order, and apply different relabellings.
+
+Nevertheless, these choices do not affect the resulting closed graph up to
+isomorphism. Any two valid certificates with the same `L`, `R`, `G`, and
+`before` produce isomorphic result graphs.
+
+The proof is omitted. Conceptually:
+
+1. Both certificates perform the same gluing along the boundary of
+   `before.complement`.
+
+2. The ordered boundary compatibility condition implies that the two raw
+   gluings are isomorphic.
+
+3. Suppression of bivalent vertices is confluent: the result is independent
+   of the order in which suppressible vertices are removed.
+
+4. Relabelling preserves graph isomorphism.
+
+Combining these facts yields an isomorphism between the two resulting
+closed graphs.
 -/
-theorem Replacement.unique_up_to_iso
-    {L R   : OpenGraph}
+theorem Substitution.unique_up_to_iso
+    {L R : OpenGraph}
     {G H₁ H₂ : ClosedGraph}
     {before : Occurrence L G}
     (r₁  : Replacement L R G H₁ before)
